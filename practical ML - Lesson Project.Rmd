@@ -1,0 +1,168 @@
+---
+title: "Practical ML - Lesson Project"
+author: "Christian Willig"
+date: "22 January 2017"
+output: html_document
+---
+
+```{r setup}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## Setting the scene
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset)."
+
+
+## Data
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. The information has been generously provided for use use in this cousera course by the authors, Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. They have allowed the use of their paper "Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+
+## Process Overview
+
+
+The steps to be performed in this project are:
+
+1. Load data into R data structures.
+2. Create training and testing data sets for cross validation checking.
+3. Test methods Random Forrest, Gradient Boosted and Linear discriminant.
+4. Improve prediction model by combining the above methods, reduction of input variables or similar.
+
+
+## Loading data
+
+Loading Libraries
+```{r Code Chunk, message=FALSE, echo=TRUE}
+library("ggplot2")
+library("caret")
+
+library("randomForest")
+library("e1071")
+library("gbm")
+library("doParallel")
+library("survival")
+library("splines")
+library("plyr")
+library("RCurl")
+
+# Setting the seed
+set.seed(321)
+
+```
+
+Loading data from website
+```{r echo=TRUE}
+#Loading training data from website provided.
+trainingURL <- getURL('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv', ssl.verifyhost=FALSE, ssl.verifypeer=FALSE)
+
+train <- read.csv(textConnection(trainingURL), header=T, na.strings = c("NA","#DIV/0!",""))
+
+#Loading testing data from website provided.
+testURL <- getURL('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv', ssl.verifyhost=FALSE, ssl.verifypeer=FALSE)
+
+test <- read.csv(textConnection(testURL), header=T, na.strings = c("NA","#DIV/0!",""))
+
+# Check dimensions for number of variables and number of observations
+dim(train)
+dim(test)
+
+# Delete columns with all missing values
+train<-train[,colSums(is.na(train)) == 0]
+test <-test[,colSums(is.na(test)) == 0]
+
+# deleting non meaningful variables.
+train  <-train[,-c(1:7)]
+test <-test[,-c(1:7)]
+
+# new datasets:
+dim(train)
+dim(test)
+#head(train)
+#head(test)
+
+# Partitioning data to allow cross validation.
+ssample <- createDataPartition(y=train$classe, p=0.75, list=FALSE)
+sTrain <- train[ssample, ] 
+sTest <- train[-ssample, ]
+dim(sTrain)
+dim(sTest)
+#head(sTrain)
+#head(sTest)
+```
+
+
+## Previewing data
+
+Charting the output variable will show the frequency of each level in the sTrain data set and compare one another. The variable "classe" contains 5 levels: A, B, C, D and E.
+
+```{r pressure, echo=FALSE, message=FALSE}
+plot(sTrain$classe, col="green", main="Levels of the variable classe within the sTrain data set", xlab="classe levels", ylab="Frequency")
+```
+From the charrt, it is reasonable to say that each level frequency is within the same order of magnitud between each other. Level A is the one with the highest frequency with more than 4000 occurrences while level D is the least frequent with about 2500 occurrences.
+
+## First prediction model
+
+```{r echo=TRUE, message=FALSE}
+library(rpart) # Regressive Partitioning and Regression trees
+library(rpart.plot) # Decision Tree plot
+
+model_one <- rpart(classe ~ ., data=sTrain, method="class")
+
+# Executing the prediction on the test data
+prediction_one <- predict(model_one, sTest, type = "class")
+
+# Let's plot the decision tree
+rpart.plot(model_one, main="Classification Tree", extra=102, under=TRUE, faclen=0)
+
+# Testing results on sTest data set:
+print(confusionMatrix(prediction_one, sTest$classe))
+```
+
+## Second prediction model
+
+```{r echo=TRUE, message=FALSE}
+model_two <- randomForest(classe ~. , data=sTrain, method="class")
+
+# Predicting:
+prediction_two <- predict(model_two, sTest, type = "class")
+
+# Test results on subTesting data set:
+print(confusionMatrix(prediction_two, sTest$classe))
+```
+
+## Conclusion
+
+As we can see in the results, the Random Forest algorithm performed better than Decision Trees.
+ 
+The accuracy for the Random Forest model was 0.995 (95% CI: (0.993, 0.997)) agains a  0.739 (95% CI: (0.727, 0.752)) for Decision Tree model. 
+
+Based on this results we choose the random Forest model. The accuracy of the model is 0.995. The expected out-of-sample error is estimated at 0.005, or 0.5%. The expected out-of-sample error is calculated as 1 - accuracy for predictions made against the cross-validation set. Our Test data set comprises 20 cases. With an accuracy above 99% on our cross-validation data, we can expect that very few, or none, of the test samples will be missclassified.
+
+## Submission
+
+```{r echo=TRUE, message=FALSE}
+# prediction of output levels from the original Testing data set using Random Forest algorithm
+predict_test <- predict(model_two, test, type="class")
+predict_test
+
+# Writing files as requested in submission
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(predict_test)
+
+```
